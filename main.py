@@ -1,6 +1,13 @@
-def main():
-    print("Hello from tool-mcp-skill-lab!")
+from dotenv import load_dotenv
+from openai import OpenAI
 
+load_dotenv()
 
-if __name__ == "__main__":
-    main()
+client = OpenAI()
+
+response = client.responses.create(
+    model="gpt-5-mini",
+    input="Say hello in one short sentence.",
+)
+
+print(response.output_text)
