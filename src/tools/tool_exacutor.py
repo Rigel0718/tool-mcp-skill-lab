@@ -1,10 +1,10 @@
 import json
 
-from tool_registry import TOOL_REGISTRY
+from tools.tool_registry import TOOL_REGISTRY
 
 def exacute_tool(tool_call):
     try:
-        args = json.loads(tool_call)
+        args = json.loads(tool_call.arguments)
 
     except json.JSONDecodeError as e:
         raise ValueError(
