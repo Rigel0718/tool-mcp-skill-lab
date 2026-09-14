@@ -2,7 +2,7 @@ import json
 
 from tools.tool_registry import TOOL_REGISTRY
 
-def exacute_tool(tool_call):
+def execute_tool(tool_call):
     try:
         args = json.loads(tool_call.arguments)
 

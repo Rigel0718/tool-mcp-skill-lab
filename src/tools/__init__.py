@@ -1,3 +1,4 @@
-from .tool_exacutor import exacute_tool
+from .tool_executor import execute_tool
+from .tool_errors import ToolError, ToolNotFoundError, ToolArgumentsError, ToolExecutionError
 
-__all__ = ["exacute_tool"]
+__all__ = ["execute_tool", "ToolError", "ToolNotFoundError", "ToolArgumentsError", "ToolExecutionError"]
