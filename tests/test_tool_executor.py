@@ -48,3 +48,24 @@ def test_execute_tool_with_failure():
     
     with pytest.raises(ToolExecutionError):
         execute_tool(tool_call)
+
+
+#------ validate_tool_arguments tests -----
+def test_execute_tool_with_missing_required_argument():
+    tool_call = SimpleNamespace(
+        name="list_files", 
+        arguments=json.dumps({}),
+    )
+    
+    with pytest.raises(ToolArgumentsError):
+        execute_tool(tool_call)
+
+
+def test_execute_tool_with_invalid_argument_type():
+    tool_call = SimpleNamespace(
+        name="list_files", 
+        arguments=json.dumps({"path": 123}),
+    )
+    
+    with pytest.raises(ToolArgumentsError):
+        execute_tool(tool_call)
