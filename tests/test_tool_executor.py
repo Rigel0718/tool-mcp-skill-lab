@@ -1,6 +1,7 @@
 import json
 from types import SimpleNamespace
 
+import time
 import pytest
 
 from tools.tool_executor import execute_tool
@@ -8,7 +9,11 @@ from tools import (
     ToolNotFoundError,
     ToolArgumentsError, 
     ToolExecutionError,
+    ToolTimeoutError,
 )
+
+from tools.tool_registry import TOOL_REGISTRY
+from tools.code_tools_schemas import TOOL_SCHEMA_REGISTRY
 
 
 def test_execute_tool_with_valid_tool_call(tmp_path):
@@ -68,4 +73,46 @@ def test_execute_tool_with_invalid_argument_type():
     )
     
     with pytest.raises(ToolArgumentsError):
+        execute_tool(tool_call)
+
+
+# --- test for tool timeout ---
+
+def test_execute_tool_with_timeout(monkeypatch):
+    def slow_tool():
+        time.sleep(10)  # Simulate long-running tool
+        return "done"        
+
+
+    monkeypatch.setitem(
+        TOOL_REGISTRY, 
+        "slow_tool", 
+        slow_tool,
+    )
+
+    monkeypatch.setitem(
+        TOOL_SCHEMA_REGISTRY, 
+        "slow_tool", 
+        {
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        }
+    )
+
+    monkeypatch.setattr(
+        "tools.tool_executor.TOOL_TIMEOUT",
+        0.1,  # Set a very short timeout for testing
+    )
+    
+    tool_call = SimpleNamespace(
+        name="slow_tool", 
+        arguments=json.dumps({})
+    )
+    
+    with pytest.raises(ToolTimeoutError):
         execute_tool(tool_call)
