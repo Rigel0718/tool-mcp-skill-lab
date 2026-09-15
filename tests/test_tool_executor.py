@@ -116,3 +116,20 @@ def test_execute_tool_with_timeout(monkeypatch):
     
     with pytest.raises(ToolTimeoutError):
         execute_tool(tool_call)
+
+
+# --- test for normalize reult ---
+def test_execute_tool_normalies_list_result(tmp_path):
+    (tmp_path / "example.txt").touch()
+
+    tool_call = SimpleNamespace(
+        name="list_files",
+        arguments=json.dumps({"path": str(tmp_path)}),
+    )
+
+    result = execute_tool(tool_call)
+
+    assert isinstance(result, str)  # Should be a JSON string
+
+    pared_result = json.loads(result)
+    assert "example.txt" in pared_result
