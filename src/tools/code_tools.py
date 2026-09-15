@@ -33,4 +33,3 @@ def run_command(command):
 
     output = (result.stdout + result.stderr).strip()
     return output or f"(no output, exit code {result.returncode})"
-
