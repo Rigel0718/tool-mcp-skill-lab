@@ -10,6 +10,7 @@ from .tool_errors import ToolNotFoundError, ToolArgumentsError, ToolExecutionErr
 
 TOOL_TIMEOUT = 5  # seconds
 
+
 def execute_tool_with_timeout(
         tool_func, 
         args, 
@@ -28,6 +29,25 @@ def execute_tool_with_timeout(
         executor.shutdown(wait=False)
 
     return result
+
+
+
+def nomalize_result(result):
+    if isinstance(result, str):
+        return result.strip()
+
+    try: 
+        return json.dumps(
+            result,
+            ensure_ascii=False,
+        )
+    except (TypeError, ValueError) as e:
+        raise ToolExecutionError(
+            f"Tool returned a non-serializable result: {e}"
+            f"Result: {result}"
+        )
+
+
 
 def validate_tool_arguments(tool_name: str, arguments: dict):
     schema = TOOL_SCHEMA_REGISTRY[tool_name]["parameters"]
@@ -84,4 +104,4 @@ def execute_tool(tool_call):
             f"Error occurred while executing tool '{tool_call.name}': {e}"
         )
 
-    return result
+    return nomalize_result(result)
