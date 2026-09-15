@@ -77,3 +77,16 @@ RUN_COMMAND_SCHEMA = {
     },
     "strict": True,
 }
+
+
+TOOL_SCHEMAS = [
+    LIST_FILES_SCHEMA,
+    READ_FILE_SCHEMA,
+    WRITE_FILE_SCHEMA,
+    RUN_COMMAND_SCHEMA,
+]
+
+TOOL_SCHEMA_REGISTRY = {
+    schema["name"]: schema
+    for schema in TOOL_SCHEMAS
+}
