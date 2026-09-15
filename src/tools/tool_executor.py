@@ -1,9 +1,33 @@
 import json
 from jsonschema import validate, ValidationError
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
 from .tool_registry import TOOL_REGISTRY
 from .code_tools_schemas import TOOL_SCHEMA_REGISTRY
-from .tool_errors import ToolNotFoundError, ToolArgumentsError, ToolExecutionError
+from .tool_errors import ToolNotFoundError, ToolArgumentsError, ToolExecutionError, ToolTimeoutError
+
+
+TOOL_TIMEOUT = 5  # seconds
+
+def execute_tool_with_timeout(
+        tool_func, 
+        args, 
+        timeout=TOOL_TIMEOUT
+):
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    future = executor.submit(
+        tool_func, 
+        **args,
+    )
+
+    try:
+        result = future.result(timeout=timeout)
+    finally:
+        executor.shutdown(wait=False)
+
+    return result
 
 def validate_tool_arguments(tool_name: str, arguments: dict):
     schema = TOOL_SCHEMA_REGISTRY[tool_name]["parameters"]
@@ -43,8 +67,18 @@ def execute_tool(tool_call):
     )
 
     try:
-        result = tool_func(**args)
+        result = execute_tool_with_timeout(
+            tool_func,
+            args,
+            timeout=TOOL_TIMEOUT
+        )
 
+    except TimeoutError:
+        raise ToolTimeoutError(
+            f"Tool '{tool_call.name}' timed out after"
+            f" {TOOL_TIMEOUT} seconds"
+        )
+    
     except Exception as e:
         raise ToolExecutionError(
             f"Error occurred while executing tool '{tool_call.name}': {e}"

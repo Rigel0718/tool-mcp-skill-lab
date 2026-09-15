@@ -14,3 +14,7 @@ class ToolArgumentsError(ToolError):
 
 class ToolExecutionError(ToolError):
     pass
+
+
+class ToolTimeoutError(ToolError):
+    pass
