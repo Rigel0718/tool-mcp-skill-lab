@@ -32,7 +32,7 @@ def execute_tool_with_timeout(
 
 
 
-def nomalize_result(result):
+def normalize_result(result):
     if isinstance(result, str):
         return result.strip()
 
@@ -104,4 +104,4 @@ def execute_tool(tool_call):
             f"Error occurred while executing tool '{tool_call.name}': {e}"
         )
 
-    return nomalize_result(result)
+    return normalize_result(result)
