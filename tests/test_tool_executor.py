@@ -119,7 +119,7 @@ def test_execute_tool_with_timeout(monkeypatch):
 
 
 # --- test for normalize reult ---
-def test_execute_tool_normalies_list_result(tmp_path):
+def test_execute_tool_normalizes_list_result(tmp_path):
     (tmp_path / "example.txt").touch()
 
     tool_call = SimpleNamespace(
@@ -131,5 +131,5 @@ def test_execute_tool_normalies_list_result(tmp_path):
 
     assert isinstance(result, str)  # Should be a JSON string
 
-    pared_result = json.loads(result)
-    assert "example.txt" in pared_result
+    parsed_result = json.loads(result)
+    assert "example.txt" in parsed_result
