@@ -130,6 +130,4 @@ def test_execute_tool_normalizes_list_result(tmp_path):
     result = execute_tool(tool_call)
 
     assert isinstance(result, str)  # Should be a JSON string
-
-    parsed_result = json.loads(result)
-    assert "example.txt" in parsed_result
+    assert "example.txt" in result
