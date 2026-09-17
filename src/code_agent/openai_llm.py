@@ -17,7 +17,7 @@ def get_client() -> OpenAI:
 def call_openai_model(user_input, tool_schemas=None, raw_response=True):
     request = {
         "model":MODEL,
-        "reasoning":{"effort" : "none"},
+        # "reasoning":{"effort" : "none"},
         "input":user_input,
     }
 
