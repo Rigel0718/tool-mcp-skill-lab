@@ -2,12 +2,15 @@ import json
 from typing import Any
 
 from tools import ToolError, execute_tool
-from tools.code_tools_schemas import TOOL_SCHEMAS
+from tools import TOOL_SCHEMAS
+from tools import execute_tools_via_gateway
+from context import ExecutionContext
 
 from .openai_llm import call_openai_model
 
 
 MAX_TOOL_ROUNDS = 20
+test_context = ExecutionContext(user_id="local_user")
 
 
 def run_agent(
@@ -28,7 +31,7 @@ def run_agent(
         for tool_call in tool_calls:
 
             try:
-                result = execute_tool(tool_call)
+                result = execute_tools_via_gateway(tool_call)
             except ToolError as e:
                 # Returning tool failures lets the model recover or explain them.
                 result = f"Tool error: {e}"
