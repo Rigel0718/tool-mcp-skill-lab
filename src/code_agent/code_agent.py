@@ -31,7 +31,7 @@ def run_agent(
         for tool_call in tool_calls:
 
             try:
-                result = execute_tools_via_gateway(tool_call)
+                result = execute_tools_via_gateway(tool_call,test_context)
             except ToolError as e:
                 # Returning tool failures lets the model recover or explain them.
                 result = f"Tool error: {e}"
