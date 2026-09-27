@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from pathlib import Path
 
 from code_agent import code_agent
+from context import ExecutionContext
+from tools import PermissionDeniedError, PermissionPolicy
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -47,12 +49,66 @@ def test_run_agent_executes_tool_and_returns_final_text(monkeypatch):
         "call_openai_model",
         lambda history, schemas, raw_response: next(responses),
     )
-    monkeypatch.setattr(code_agent, "execute_tool", lambda tool_call: '["a.py"]')
+    monkeypatch.setattr(
+        code_agent,
+        "execute_tools_via_gateway",
+        lambda tool_call, context, permission_policy: '["a.py"]',
+    )
     history = [{"role": "user", "content": "List files"}]
+    context = ExecutionContext(user_id="test_user")
+    permission_policy = PermissionPolicy({"test_user": {"list_files"}})
 
-    assert code_agent.run_agent(history) == "Done"
+    assert code_agent.run_agent(history, context, permission_policy) == "Done"
     assert history[-1] == {
         "type": "function_call_output",
         "call_id": "call-1",
         "output": '["a.py"]',
+    }
+
+
+def test_run_agent_returns_permission_denial_to_model(monkeypatch):
+    responses = iter(
+        [
+            SimpleNamespace(
+                output=[
+                    SimpleNamespace(
+                        type="function_call",
+                        name="write_file",
+                        arguments=json.dumps({
+                            "path": "example.txt",
+                            "content": "example",
+                        }),
+                        call_id="call-1",
+                    )
+                ],
+                output_text="",
+            ),
+            SimpleNamespace(output=[], output_text="Permission denied"),
+        ]
+    )
+
+    monkeypatch.setattr(
+        code_agent,
+        "call_openai_model",
+        lambda history, schemas, raw_response: next(responses),
+    )
+    monkeypatch.setattr(
+        code_agent,
+        "execute_tools_via_gateway",
+        lambda tool_call, context, permission_policy: (
+            (_ for _ in ()).throw(PermissionDeniedError("not allowed"))
+        ),
+    )
+    history = [{"role": "user", "content": "Write a file"}]
+    context = ExecutionContext(user_id="test_user")
+    permission_policy = PermissionPolicy({"test_user": set()})
+
+    assert (
+        code_agent.run_agent(history, context, permission_policy)
+        == "Permission denied"
+    )
+    assert history[-1] == {
+        "type": "function_call_output",
+        "call_id": "call-1",
+        "output": "Tool error: not allowed",
     }

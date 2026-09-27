@@ -18,3 +18,7 @@ class ToolExecutionError(ToolError):
 
 class ToolTimeoutError(ToolError):
     pass
+
+
+class PermissionDeniedError(ToolError):
+    pass

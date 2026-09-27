@@ -1,24 +1,19 @@
-from enum import Enum
 from context import ExecutionContext
-from tools import execute_tool
 
-
-class ToolPermission(Enum):
-    READ = "read"
-    WRITE = "write"
-    EXECUTE = "execute"
-
-
-TOOL_PERMISSION_REGISTRY = {
-    "list_files": ToolPermission.READ,
-    "read_file": ToolPermission.READ,
-    "write_file": ToolPermission.WRITE,
-    "run_command": ToolPermission.EXECUTE,
-}
+from .permission_policy import PermissionPolicy
+from .tool_errors import PermissionDeniedError
+from .tool_executor import execute_tool
 
 
 def execute_tools_via_gateway(
-        tool_call,
-        context : ExecutionContext,
+    tool_call,
+    context: ExecutionContext,
+    permission_policy: PermissionPolicy,
 ):
+    if not permission_policy.is_allowed(context, tool_call.name):
+        raise PermissionDeniedError(
+            f"User '{context.user_id}' is not allowed to use "
+            f"tool '{tool_call.name}'"
+        )
+
     return execute_tool(tool_call)
