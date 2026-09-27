@@ -5,6 +5,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from code_agent import run_agent
+from permission_config import TOOL_PERMISSIONS
+from context import ExecutionContext
+from tools import PermissionPolicy
 
 DEVELOPER_PROMPT = """You are a coding agent running in the user's terminal.
 You can list files, read files, write files, and run shell commands.
@@ -15,6 +18,8 @@ The working directory is the folder the user launched you from.
 
 def main():
     messages = [{"role": "developer", "content": DEVELOPER_PROMPT}]
+    context = ExecutionContext(user_id="local_user")
+    permission_policy = PermissionPolicy(TOOL_PERMISSIONS)
     print("Mini agent ready. Type 'exit' or 'quit' to stop.")
 
     while True:
@@ -23,7 +28,7 @@ def main():
             break
 
         messages.append({"role": "user", "content": user_input})
-        reply = run_agent(messages)
+        reply = run_agent(messages, context, permission_policy)
         print(f"\nAgent: {reply}")
 
 
