@@ -6,7 +6,13 @@ from pathlib import Path
 
 from code_agent import code_agent
 from context import ExecutionContext
-from tools import PermissionDeniedError, PermissionPolicy
+from approval_config import AUTO_APPROVED_COMMANDS
+from tools import (
+    ApprovalPolicy,
+    ApprovalRequiredError,
+    PermissionDeniedError,
+    PermissionPolicy,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -52,13 +58,22 @@ def test_run_agent_executes_tool_and_returns_final_text(monkeypatch):
     monkeypatch.setattr(
         code_agent,
         "execute_tools_via_gateway",
-        lambda tool_call, context, permission_policy: '["a.py"]',
+        lambda tool_call, context, permission_policy, approval_policy: '["a.py"]',
     )
     history = [{"role": "user", "content": "List files"}]
     context = ExecutionContext(user_id="test_user")
     permission_policy = PermissionPolicy({"test_user": {"list_files"}})
+    approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
 
-    assert code_agent.run_agent(history, context, permission_policy) == "Done"
+    assert (
+        code_agent.run_agent(
+            history,
+            context,
+            permission_policy,
+            approval_policy,
+        )
+        == "Done"
+    )
     assert history[-1] == {
         "type": "function_call_output",
         "call_id": "call-1",
@@ -95,20 +110,77 @@ def test_run_agent_returns_permission_denial_to_model(monkeypatch):
     monkeypatch.setattr(
         code_agent,
         "execute_tools_via_gateway",
-        lambda tool_call, context, permission_policy: (
+        lambda tool_call, context, permission_policy, approval_policy: (
             (_ for _ in ()).throw(PermissionDeniedError("not allowed"))
         ),
     )
     history = [{"role": "user", "content": "Write a file"}]
     context = ExecutionContext(user_id="test_user")
     permission_policy = PermissionPolicy({"test_user": set()})
+    approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
 
     assert (
-        code_agent.run_agent(history, context, permission_policy)
+        code_agent.run_agent(
+            history,
+            context,
+            permission_policy,
+            approval_policy,
+        )
         == "Permission denied"
     )
     assert history[-1] == {
         "type": "function_call_output",
         "call_id": "call-1",
         "output": "Tool error: not allowed",
+    }
+
+
+def test_run_agent_returns_approval_requirement_to_model(monkeypatch):
+    responses = iter(
+        [
+            SimpleNamespace(
+                output=[
+                    SimpleNamespace(
+                        type="function_call",
+                        name="run_command",
+                        arguments=json.dumps({"command": "rm example.txt"}),
+                        call_id="call-1",
+                    )
+                ],
+                output_text="",
+            ),
+            SimpleNamespace(output=[], output_text="Approval required"),
+        ]
+    )
+
+    monkeypatch.setattr(
+        code_agent,
+        "call_openai_model",
+        lambda history, schemas, raw_response: next(responses),
+    )
+    monkeypatch.setattr(
+        code_agent,
+        "execute_tools_via_gateway",
+        lambda tool_call, context, permission_policy, approval_policy: (
+            (_ for _ in ()).throw(ApprovalRequiredError("approval required"))
+        ),
+    )
+    history = [{"role": "user", "content": "Remove a file"}]
+    context = ExecutionContext(user_id="test_user")
+    permission_policy = PermissionPolicy({"test_user": {"run_command"}})
+    approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
+
+    assert (
+        code_agent.run_agent(
+            history,
+            context,
+            permission_policy,
+            approval_policy,
+        )
+        == "Approval required"
+    )
+    assert history[-1] == {
+        "type": "function_call_output",
+        "call_id": "call-1",
+        "output": "Tool error: approval required",
     }

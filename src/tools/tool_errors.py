@@ -22,3 +22,7 @@ class ToolTimeoutError(ToolError):
 
 class PermissionDeniedError(ToolError):
     pass
+
+
+class ApprovalRequiredError(ToolError):
+    pass
