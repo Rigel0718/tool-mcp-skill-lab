@@ -2,7 +2,12 @@ import json
 from typing import Any
 
 from context import ExecutionContext
-from tools import PermissionPolicy, ToolError, execute_tools_via_gateway
+from tools import (
+    ApprovalPolicy,
+    PermissionPolicy,
+    ToolError,
+    execute_tools_via_gateway,
+)
 from tools.code_tools_schemas import TOOL_SCHEMAS
 
 from .openai_llm import call_openai_model
@@ -15,6 +20,7 @@ def run_agent(
     history: list[Any],
     context: ExecutionContext,
     permission_policy: PermissionPolicy,
+    approval_policy: ApprovalPolicy,
     tool_schemas: list[dict[str, Any]] = TOOL_SCHEMAS,
 ) -> str:
     """Run the model/tool loop and append all new items to ``history``."""
@@ -34,6 +40,7 @@ def run_agent(
                     tool_call,
                     context,
                     permission_policy,
+                    approval_policy,
                 )
             except ToolError as e:
                 # Returning tool failures lets the model recover or explain them.

@@ -23,10 +23,6 @@ def write_file(path, content):
 
 
 def run_command(command):
-    answer = input(f"Run command: {command} [y/N]? ")
-    if answer.strip().lower() != "y":
-        return "Command not run."
-
     result = subprocess.run(
         command, shell=True, capture_output=True, text=True, timeout=100
     )
