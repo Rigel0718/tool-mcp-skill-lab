@@ -23,6 +23,7 @@ def call_openai_model(user_input, tool_schemas=None, raw_response=True):
 
     if tool_schemas is not None:
         request["tools"]=tool_schemas
+        request["parallel_tool_calls"] = False
 
     response = get_client().responses.create(
         **request
@@ -32,4 +33,3 @@ def call_openai_model(user_input, tool_schemas=None, raw_response=True):
         return response
 
     return response.output_text
-
