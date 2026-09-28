@@ -1,9 +1,10 @@
-import json
 from typing import Any
 
 from context import ExecutionContext
+from hitl import ApprovalRequest, PendingApproval
 from tools import (
     ApprovalPolicy,
+    ApprovalRequiredError,
     PermissionPolicy,
     ToolError,
     execute_tools_via_gateway,
@@ -22,7 +23,7 @@ def run_agent(
     permission_policy: PermissionPolicy,
     approval_policy: ApprovalPolicy,
     tool_schemas: list[dict[str, Any]] = TOOL_SCHEMAS,
-) -> str:
+) -> str | PendingApproval:
     """Run the model/tool loop and append all new items to ``history``."""
     for _ in range(MAX_TOOL_ROUNDS):
         response = call_openai_model(history, tool_schemas, raw_response=True)
@@ -41,6 +42,13 @@ def run_agent(
                     context,
                     permission_policy,
                     approval_policy,
+                )
+            except ApprovalRequiredError as error:
+                return PendingApproval(
+                    approval_request=ApprovalRequest(
+                        tool_call=tool_call,
+                        reason=str(error),
+                    )
                 )
             except ToolError as e:
                 # Returning tool failures lets the model recover or explain them.

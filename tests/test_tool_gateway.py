@@ -12,6 +12,8 @@ from tools import (
 )
 from approval_config import AUTO_APPROVED_COMMANDS
 from context import ExecutionContext
+from hitl import ApprovalRequest, ApprovalStatus
+from tools import execute_approved_tool_via_gateway
 
 
 def make_tool_call(name, arguments):
@@ -117,6 +119,89 @@ def test_approval_required_blocks_executor(monkeypatch, tmp_path):
         )
 
     assert executor_called is False
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ApprovalStatus.PENDING, ApprovalStatus.REJECTED],
+)
+def test_approved_gateway_rejects_request_without_approval(
+    monkeypatch,
+    status,
+):
+    request = ApprovalRequest(
+        tool_call=make_tool_call("run_command", {"command": "rm file"}),
+        reason="destructive command",
+        status=status,
+    )
+    executor_called = False
+
+    def fake_execute_tool(tool_call):
+        nonlocal executor_called
+        executor_called = True
+
+    monkeypatch.setattr("tools.tool_gateway.execute_tool", fake_execute_tool)
+
+    with pytest.raises(ValueError):
+        execute_approved_tool_via_gateway(
+            request,
+            ExecutionContext(user_id="test_user"),
+            PermissionPolicy({"test_user": {"run_command"}}),
+        )
+
+    assert executor_called is False
+
+
+def test_approved_gateway_checks_permission_before_execution(monkeypatch):
+    request = ApprovalRequest(
+        tool_call=make_tool_call("run_command", {"command": "rm file"}),
+        reason="destructive command",
+        status=ApprovalStatus.APPROVED,
+    )
+    executor_called = False
+
+    def fake_execute_tool(tool_call):
+        nonlocal executor_called
+        executor_called = True
+
+    monkeypatch.setattr("tools.tool_gateway.execute_tool", fake_execute_tool)
+
+    with pytest.raises(PermissionDeniedError):
+        execute_approved_tool_via_gateway(
+            request,
+            ExecutionContext(user_id="test_user"),
+            PermissionPolicy({"test_user": set()}),
+        )
+
+    assert executor_called is False
+
+
+def test_approved_gateway_executes_original_call_without_approval_check(
+    monkeypatch,
+):
+    tool_call = make_tool_call("run_command", {"command": "rm file"})
+    request = ApprovalRequest(
+        tool_call=tool_call,
+        reason="destructive command",
+        status=ApprovalStatus.APPROVED,
+    )
+    executed_call = None
+
+    def fake_execute_tool(received_call):
+        nonlocal executed_call
+        executed_call = received_call
+        return "removed"
+
+    monkeypatch.setattr("tools.tool_gateway.execute_tool", fake_execute_tool)
+
+    result = execute_approved_tool_via_gateway(
+        request,
+        ExecutionContext(user_id="test_user"),
+        PermissionPolicy({"test_user": {"run_command"}}),
+    )
+
+    assert result == "removed"
+    assert executed_call is tool_call
 
 
 @pytest.mark.parametrize(
