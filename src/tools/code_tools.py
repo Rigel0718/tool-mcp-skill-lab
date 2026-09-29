@@ -1,5 +1,10 @@
+import logging
 import os
 import subprocess
+
+
+logger = logging.getLogger(__name__)
+
 
 def list_files(path="."):
     entries = []
@@ -11,8 +16,11 @@ def list_files(path="."):
 
 
 def read_file(path):
+    logger.debug("reading file path=%s", path)
     with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+        content = f.read()
+    logger.debug("finished reading file path=%s characters=%d", path, len(content))
+    return content
 
 
 def write_file(path, content):
