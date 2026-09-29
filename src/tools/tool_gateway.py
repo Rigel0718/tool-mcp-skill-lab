@@ -7,9 +7,11 @@ from .approval_policy import ApprovalPolicy
 from .permission_policy import PermissionPolicy
 from .tool_errors import ApprovalRequiredError, PermissionDeniedError, ToolError
 from .tool_executor import execute_tool
+from .retry_executor import RetryExecutor
 
 
 logger = logging.getLogger(__name__)
+retry_executor = RetryExecutor()
 
 
 def _log_execution(tool_call, context: ExecutionContext, result: str) -> None:
@@ -45,7 +47,7 @@ def execute_tools_via_gateway(
         )
 
     try:
-        result = execute_tool(tool_call)
+        result = retry_executor.execute(tool_call, execute_tool)
     except ToolError:
         _log_execution(tool_call, context, "failed")
         raise
@@ -73,7 +75,7 @@ def execute_approved_tool_via_gateway(
         )
 
     try:
-        result = execute_tool(tool_call)
+        result = retry_executor.execute(tool_call, execute_tool)
     except ToolError:
         _log_execution(tool_call, context, "failed")
         raise
