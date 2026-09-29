@@ -1,4 +1,5 @@
 import json
+import logging
 from types import SimpleNamespace
 
 import time
@@ -26,33 +27,46 @@ def test_execute_tool_with_valid_tool_call(tmp_path):
     assert "example.txt" in result
 
 
-def test_execute_unknown_tool():
+def test_execute_unknown_tool(caplog):
     tool_call = SimpleNamespace(
         name="unknown_tool", arguments='{}'
     )
     
-    with pytest.raises(ToolNotFoundError):
-        execute_tool(tool_call)
+    with caplog.at_level(logging.ERROR, logger="tools.tool_executor"):
+        with pytest.raises(ToolNotFoundError):
+            execute_tool(tool_call)
+
+    assert len(caplog.records) == 1
+    assert "error_type=ToolNotFoundError" in caplog.records[0].getMessage()
 
 
-def test_execute_tool_with_invalid_json_arguments():
+def test_execute_tool_with_invalid_json_arguments(caplog):
     tool_call = SimpleNamespace(
         name="list_files", 
         arguments='{"path": "some_path"'
     )
     
-    with pytest.raises(ToolArgumentsError):
-        execute_tool(tool_call)
+    with caplog.at_level(logging.ERROR, logger="tools.tool_executor"):
+        with pytest.raises(ToolArgumentsError):
+            execute_tool(tool_call)
+
+    assert len(caplog.records) == 1
+    assert "error_type=ToolArgumentsError" in caplog.records[0].getMessage()
 
 
-def test_execute_tool_with_failure():
+def test_execute_tool_with_failure(caplog):
     tool_call = SimpleNamespace(
         name="read_file", 
         arguments=json.dumps({"path": "non_existent_file.txt"})
     )
     
-    with pytest.raises(ToolExecutionError):
-        execute_tool(tool_call)
+    with caplog.at_level(logging.ERROR, logger="tools.tool_executor"):
+        with pytest.raises(ToolExecutionError):
+            execute_tool(tool_call)
+
+    assert len(caplog.records) == 1
+    assert "error_type=ToolExecutionError" in caplog.records[0].getMessage()
+    assert caplog.records[0].exc_info is not None
 
 
 #------ validate_tool_arguments tests -----
@@ -78,7 +92,7 @@ def test_execute_tool_with_invalid_argument_type():
 
 # --- test for tool timeout ---
 
-def test_execute_tool_with_timeout(monkeypatch):
+def test_execute_tool_with_timeout(monkeypatch, caplog):
     def slow_tool():
         time.sleep(10)  # Simulate long-running tool
         return "done"        
@@ -114,8 +128,12 @@ def test_execute_tool_with_timeout(monkeypatch):
         arguments=json.dumps({})
     )
     
-    with pytest.raises(ToolTimeoutError):
-        execute_tool(tool_call)
+    with caplog.at_level(logging.ERROR, logger="tools.tool_executor"):
+        with pytest.raises(ToolTimeoutError):
+            execute_tool(tool_call)
+
+    assert len(caplog.records) == 1
+    assert "error_type=ToolTimeoutError" in caplog.records[0].getMessage()
 
 
 # --- test for normalize reult ---

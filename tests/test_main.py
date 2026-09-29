@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,18 +29,47 @@ def dependencies():
     )
 
 
+def test_configure_logging_uses_info_and_expected_format(monkeypatch):
+    received = {}
+
+    monkeypatch.setattr(
+        main.logging,
+        "basicConfig",
+        lambda **kwargs: received.update(kwargs),
+    )
+
+    main.configure_logging()
+
+    assert received == {
+        "level": logging.INFO,
+        "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+    }
+
+
+def test_execution_context_generates_distinct_run_ids():
+    first = ExecutionContext(user_id="test_user")
+    second = ExecutionContext(user_id="test_user")
+
+    assert first.run_id
+    assert second.run_id
+    assert first.run_id != second.run_id
+
+
 def test_approve_executes_via_gateway_before_resume(monkeypatch):
     pending, request = make_pending()
     messages = []
     events = []
+    contexts = []
     results = iter([pending, "Done"])
 
     def fake_run_agent(*args):
         events.append("run_agent")
+        contexts.append(args[1])
         return next(results)
 
     def fake_gateway(received_request, context, permission_policy):
         events.append("gateway")
+        contexts.append(context)
         assert received_request is request
         assert received_request.status is ApprovalStatus.APPROVED
         return "removed"
@@ -52,6 +82,7 @@ def test_approve_executes_via_gateway_before_resume(monkeypatch):
 
     assert result == "Done"
     assert events == ["run_agent", "gateway", "run_agent"]
+    assert contexts[0] is contexts[1] is contexts[2]
     assert messages == [{
         "type": "function_call_output",
         "call_id": "call-1",

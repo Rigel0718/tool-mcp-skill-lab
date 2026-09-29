@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 
@@ -21,6 +22,13 @@ You can list files, read files, write files, and run shell commands.
 Use your tools to complete the user's task, then briefly summarize what you did.
 The working directory is the folder the user launched you from.
 """
+
+
+def configure_logging(level: int = logging.INFO) -> None:
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 
 def append_tool_output(messages, tool_call, output) -> None:
@@ -95,9 +103,9 @@ def agent_run_orchestration_loop(
             return None
 
 
-def main():
+def main(log_level: int = logging.INFO):
+    configure_logging(log_level)
     messages = [{"role": "developer", "content": DEVELOPER_PROMPT}]
-    context = ExecutionContext(user_id="local_user")
     permission_policy = PermissionPolicy(TOOL_PERMISSIONS)
     approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
     print("Mini agent ready. Type 'exit' or 'quit' to stop.")
@@ -107,6 +115,7 @@ def main():
         if user_input.strip().lower() in ("exit", "quit"):
             break
 
+        context = ExecutionContext(user_id="local_user")
         messages.append({"role": "user", "content": user_input})
         reply = agent_run_orchestration_loop(
             messages,

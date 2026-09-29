@@ -1,14 +1,22 @@
 import json
+import logging
 from jsonschema import validate, ValidationError
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from .tool_registry import TOOL_REGISTRY
 from .code_tools_schemas import TOOL_SCHEMA_REGISTRY
-from .tool_errors import ToolNotFoundError, ToolArgumentsError, ToolExecutionError, ToolTimeoutError
+from .tool_errors import (
+    ToolArgumentsError,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+    ToolTimeoutError,
+)
 
 
 TOOL_TIMEOUT = 5  # seconds
+logger = logging.getLogger(__name__)
 
 
 def execute_tool_with_timeout(
@@ -67,41 +75,52 @@ def validate_tool_arguments(tool_name: str, arguments: dict):
 
 def execute_tool(tool_call):
     try:
-        args = json.loads(tool_call.arguments)
+        try:
+            args = json.loads(tool_call.arguments)
 
-    except json.JSONDecodeError as e:
-        raise ToolArgumentsError(
-            f"Invalid arguments for tool '{tool_call.name}': {e}"
-        )
+        except json.JSONDecodeError as e:
+            raise ToolArgumentsError(
+                f"Invalid arguments for tool '{tool_call.name}': {e}"
+            ) from e
 
-    try:
-        tool_func = TOOL_REGISTRY[tool_call.name]
-    except KeyError:
-        raise ToolNotFoundError(
-            f"Tool not found: {tool_call.name}"
-        )
+        try:
+            tool_func = TOOL_REGISTRY[tool_call.name]
+        except KeyError as e:
+            raise ToolNotFoundError(
+                f"Tool not found: {tool_call.name}"
+            ) from e
 
-    validate_tool_arguments(
-        tool_call.name, 
-        args,
-    )
-
-    try:
-        result = execute_tool_with_timeout(
-            tool_func,
+        validate_tool_arguments(
+            tool_call.name,
             args,
-            timeout=TOOL_TIMEOUT
         )
 
-    except TimeoutError:
-        raise ToolTimeoutError(
-            f"Tool '{tool_call.name}' timed out after"
-            f" {TOOL_TIMEOUT} seconds"
-        )
-    
-    except Exception as e:
-        raise ToolExecutionError(
-            f"Error occurred while executing tool '{tool_call.name}': {e}"
-        )
+        try:
+            result = execute_tool_with_timeout(
+                tool_func,
+                args,
+                timeout=TOOL_TIMEOUT
+            )
 
-    return normalize_result(result)
+        except TimeoutError as e:
+            raise ToolTimeoutError(
+                f"Tool '{tool_call.name}' timed out after"
+                f" {TOOL_TIMEOUT} seconds"
+            ) from e
+
+        except Exception as e:
+            raise ToolExecutionError(
+                f"Error occurred while executing tool '{tool_call.name}': {e}"
+            ) from e
+
+        return normalize_result(result)
+
+    except ToolError as error:
+        logger.error(
+            "tool execution error tool_name=%s error_type=%s error_message=%s",
+            tool_call.name,
+            type(error).__name__,
+            error,
+            exc_info=isinstance(error, ToolExecutionError),
+        )
+        raise
