@@ -7,6 +7,7 @@ from .tool_errors import (
     ToolExecutionError,
     ToolNotFoundError,
     ToolTimeoutError,
+    TransientToolError,
 )
 from .tool_gateway import (
     execute_approved_tool_via_gateway,
@@ -14,6 +15,8 @@ from .tool_gateway import (
 )
 from .approval_policy import ApprovalPolicy
 from .permission_policy import PermissionPolicy
+from .retry_executor import RetryExecutor
+from .retry_policy import RetryPolicy
 
 
 __all__ = [
@@ -29,4 +32,7 @@ __all__ = [
     "ToolExecutionError",
     "ToolNotFoundError",
     "ToolTimeoutError",
+    "TransientToolError",
+    "RetryExecutor",
+    "RetryPolicy",
 ]

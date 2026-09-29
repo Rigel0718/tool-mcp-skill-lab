@@ -11,6 +11,7 @@ from tools import (
     ToolArgumentsError, 
     ToolExecutionError,
     ToolTimeoutError,
+    TransientToolError,
 )
 
 from tools.tool_registry import TOOL_REGISTRY
@@ -67,6 +68,36 @@ def test_execute_tool_with_failure(caplog):
     assert len(caplog.records) == 1
     assert "error_type=ToolExecutionError" in caplog.records[0].getMessage()
     assert caplog.records[0].exc_info is not None
+
+
+def test_execute_tool_preserves_explicit_transient_error(monkeypatch, caplog):
+    transient_error = TransientToolError("temporary external failure")
+
+    def mock_tool():
+        raise transient_error
+
+    monkeypatch.setitem(TOOL_REGISTRY, "mock_tool", mock_tool)
+    monkeypatch.setitem(
+        TOOL_SCHEMA_REGISTRY,
+        "mock_tool",
+        {
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        },
+    )
+    tool_call = SimpleNamespace(name="mock_tool", arguments="{}")
+
+    with caplog.at_level(logging.ERROR, logger="tools.tool_executor"):
+        with pytest.raises(TransientToolError) as caught:
+            execute_tool(tool_call)
+
+    assert caught.value is transient_error
+    assert "error_type=TransientToolError" in caplog.records[0].getMessage()
 
 
 #------ validate_tool_arguments tests -----

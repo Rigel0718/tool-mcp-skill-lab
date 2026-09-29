@@ -108,6 +108,11 @@ def execute_tool(tool_call):
                 f" {TOOL_TIMEOUT} seconds"
             ) from e
 
+        except ToolError:
+            # ToolError subtypes are an explicit contract. In particular,
+            # preserve TransientToolError so RetryPolicy can identify it.
+            raise
+
         except Exception as e:
             raise ToolExecutionError(
                 f"Error occurred while executing tool '{tool_call.name}': {e}"

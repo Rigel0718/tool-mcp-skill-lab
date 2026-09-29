@@ -9,8 +9,11 @@ from tools import (
     ApprovalRequiredError,
     PermissionDeniedError,
     PermissionPolicy,
+    RetryExecutor,
     ToolArgumentsError,
     ToolExecutionError,
+    ToolTimeoutError,
+    TransientToolError,
     execute_approved_tool_via_gateway,
     execute_tools_via_gateway,
 )
@@ -386,3 +389,111 @@ def test_permission_policy_denies_unknown_user():
         ExecutionContext(user_id="unknown_user"),
         "list_files",
     )
+
+
+def test_gateway_checks_permission_and_approval_before_retry_executor(
+    monkeypatch,
+):
+    events = []
+    context = ExecutionContext(user_id="test_user")
+    tool_call = make_tool_call("read_file", {"path": "example.txt"})
+
+    class RecordingPermissionPolicy:
+        def is_allowed(self, received_context, tool_name):
+            events.append("permission")
+            return True
+
+    class RecordingApprovalPolicy:
+        def requires_approval(self, received_context, received_call):
+            events.append("approval")
+            return False
+
+    class RecordingRetryExecutor:
+        def execute(self, received_call, execute):
+            events.append("retry_executor")
+            assert received_call is tool_call
+            return "content"
+
+    monkeypatch.setattr(
+        "tools.tool_gateway.retry_executor",
+        RecordingRetryExecutor(),
+    )
+
+    result = execute_tools_via_gateway(
+        tool_call,
+        context,
+        RecordingPermissionPolicy(),
+        RecordingApprovalPolicy(),
+    )
+
+    assert result == "content"
+    assert events == ["permission", "approval", "retry_executor"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ToolArgumentsError("invalid arguments"),
+        ToolTimeoutError("completion unknown"),
+    ],
+)
+def test_gateway_does_not_retry_non_retryable_executor_errors(
+    monkeypatch,
+    error,
+):
+    calls = 0
+
+    def fail_execution(received_call):
+        nonlocal calls
+        calls += 1
+        raise error
+
+    monkeypatch.setattr("tools.tool_gateway.execute_tool", fail_execution)
+    monkeypatch.setattr(
+        "tools.tool_gateway.retry_executor",
+        RetryExecutor(sleep=lambda delay: None),
+    )
+
+    with pytest.raises(type(error)) as caught:
+        execute_tools_via_gateway(
+            make_tool_call("read_file", {"path": "example.txt"}),
+            ExecutionContext(user_id="test_user"),
+            PermissionPolicy({"test_user": {"read_file"}}),
+            ApprovalPolicy(AUTO_APPROVED_COMMANDS),
+        )
+
+    assert caught.value is error
+    assert calls == 1
+
+
+def test_approved_safe_tool_call_can_retry_without_approval_recheck(
+    monkeypatch,
+):
+    tool_call = make_tool_call("read_file", {"path": "example.txt"})
+    request = ApprovalRequest(
+        tool_call=tool_call,
+        reason="previously approved",
+        status=ApprovalStatus.APPROVED,
+    )
+    executed_calls = []
+
+    def mock_tool(received_call):
+        executed_calls.append(received_call)
+        if len(executed_calls) == 1:
+            raise TransientToolError("temporary")
+        return "content"
+
+    monkeypatch.setattr("tools.tool_gateway.execute_tool", mock_tool)
+    monkeypatch.setattr(
+        "tools.tool_gateway.retry_executor",
+        RetryExecutor(sleep=lambda delay: None),
+    )
+
+    result = execute_approved_tool_via_gateway(
+        request,
+        ExecutionContext(user_id="test_user"),
+        PermissionPolicy({"test_user": {"read_file"}}),
+    )
+
+    assert result == "content"
+    assert executed_calls == [tool_call, tool_call]
