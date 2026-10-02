@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -62,12 +63,12 @@ def test_approve_executes_via_gateway_before_resume(monkeypatch):
     contexts = []
     results = iter([pending, "Done"])
 
-    def fake_run_agent(*args):
+    async def fake_run_agent(*args):
         events.append("run_agent")
         contexts.append(args[1])
         return next(results)
 
-    def fake_gateway(received_request, context, permission_policy):
+    async def fake_gateway(received_request, context, permission_policy):
         events.append("gateway")
         contexts.append(context)
         assert received_request is request
@@ -78,7 +79,9 @@ def test_approve_executes_via_gateway_before_resume(monkeypatch):
     monkeypatch.setattr(main, "execute_approved_tool_via_gateway", fake_gateway)
     monkeypatch.setattr("builtins.input", lambda prompt: "approve")
 
-    result = main.agent_run_orchestration_loop(messages, *dependencies())
+    result = asyncio.run(
+        main.agent_run_orchestration_loop(messages, *dependencies())
+    )
 
     assert result == "Done"
     assert events == ["run_agent", "gateway", "run_agent"]
@@ -97,7 +100,7 @@ def test_reject_and_continue_records_rejection_then_resumes(monkeypatch):
     results = iter([pending, "Alternative complete"])
     choices = iter(["reject", "continue"])
 
-    def fake_run_agent(*args):
+    async def fake_run_agent(*args):
         events.append("run_agent")
         return next(results)
 
@@ -109,7 +112,9 @@ def test_reject_and_continue_records_rejection_then_resumes(monkeypatch):
     )
     monkeypatch.setattr("builtins.input", lambda prompt: next(choices))
 
-    result = main.agent_run_orchestration_loop(messages, *dependencies())
+    result = asyncio.run(
+        main.agent_run_orchestration_loop(messages, *dependencies())
+    )
 
     assert result == "Alternative complete"
     assert request.status is ApprovalStatus.REJECTED
@@ -123,7 +128,7 @@ def test_reject_and_stop_records_rejection_without_resume(monkeypatch):
     run_calls = 0
     choices = iter(["reject", "stop"])
 
-    def fake_run_agent(*args):
+    async def fake_run_agent(*args):
         nonlocal run_calls
         run_calls += 1
         return pending
@@ -136,7 +141,9 @@ def test_reject_and_stop_records_rejection_without_resume(monkeypatch):
     )
     monkeypatch.setattr("builtins.input", lambda prompt: next(choices))
 
-    result = main.agent_run_orchestration_loop(messages, *dependencies())
+    result = asyncio.run(
+        main.agent_run_orchestration_loop(messages, *dependencies())
+    )
 
     assert result is None
     assert request.status is ApprovalStatus.REJECTED

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from types import SimpleNamespace
@@ -20,6 +21,18 @@ from tools import (
 from approval_config import AUTO_APPROVED_COMMANDS
 from context import ExecutionContext
 from hitl import ApprovalRequest, ApprovalStatus
+
+
+async_execute_tools_via_gateway = execute_tools_via_gateway
+async_execute_approved_tool_via_gateway = execute_approved_tool_via_gateway
+
+
+def execute_tools_via_gateway(*args):
+    return asyncio.run(async_execute_tools_via_gateway(*args))
+
+
+def execute_approved_tool_via_gateway(*args):
+    return asyncio.run(async_execute_approved_tool_via_gateway(*args))
 
 
 def make_tool_call(name, arguments):
@@ -409,7 +422,7 @@ def test_gateway_checks_permission_and_approval_before_retry_executor(
             return False
 
     class RecordingRetryExecutor:
-        def execute(self, received_call, execute):
+        async def execute(self, received_call, execute):
             events.append("retry_executor")
             assert received_call is tool_call
             return "content"

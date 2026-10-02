@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from types import SimpleNamespace
 
@@ -14,6 +15,10 @@ from tools import (
 )
 
 
+def execute_retry(executor, tool_call, operation):
+    return asyncio.run(executor.execute(tool_call, operation))
+
+
 def make_tool_call(name="read_file"):
     return SimpleNamespace(
         name=name,
@@ -27,7 +32,7 @@ def test_first_attempt_success_does_not_retry_or_sleep():
     sleeps = []
     tool_call = make_tool_call()
 
-    result = RetryExecutor(sleep=sleeps.append).execute(
+    result = execute_retry(RetryExecutor(sleep=sleeps.append),
         tool_call,
         lambda received: calls.append(received) or "content",
     )
@@ -49,7 +54,9 @@ def test_retry_succeeds_on_first_or_second_retry(failures):
             raise TransientToolError("temporary")
         return "content"
 
-    result = RetryExecutor(sleep=sleeps.append).execute(tool_call, mock_tool)
+    result = execute_retry(
+        RetryExecutor(sleep=sleeps.append), tool_call, mock_tool
+    )
 
     assert result == "content"
     assert calls == [tool_call] * (failures + 1)
@@ -70,7 +77,9 @@ def test_maximum_retries_reraises_last_error():
         raise errors[len(calls) - 1]
 
     with pytest.raises(TransientToolError) as caught:
-        RetryExecutor(sleep=sleeps.append).execute(make_tool_call(), mock_tool)
+        execute_retry(
+            RetryExecutor(sleep=sleeps.append), make_tool_call(), mock_tool
+        )
 
     assert caught.value is errors[-1]
     assert len(calls) == 3
@@ -95,7 +104,9 @@ def test_non_retryable_error_is_reraised_immediately(error):
         raise error
 
     with pytest.raises(type(error)) as caught:
-        RetryExecutor(sleep=sleeps.append).execute(make_tool_call(), mock_tool)
+        execute_retry(
+            RetryExecutor(sleep=sleeps.append), make_tool_call(), mock_tool
+        )
 
     assert caught.value is error
     assert calls == 1
@@ -119,7 +130,7 @@ def test_gateway_control_errors_bypass_retry_handling(error, caplog):
 
     with caplog.at_level(logging.INFO, logger="tools.retry_executor"):
         with pytest.raises(type(error)) as caught:
-            RetryExecutor(sleep=lambda delay: None).execute(
+            execute_retry(RetryExecutor(sleep=lambda delay: None),
                 make_tool_call(),
                 mock_tool,
             )
@@ -139,7 +150,7 @@ def test_unsafe_tool_is_not_retried_for_transient_error(name):
         raise TransientToolError("temporary")
 
     with pytest.raises(TransientToolError):
-        RetryExecutor(sleep=lambda delay: None).execute(
+        execute_retry(RetryExecutor(sleep=lambda delay: None),
             make_tool_call(name),
             mock_tool,
         )
@@ -159,7 +170,9 @@ def test_retry_logging_contains_metadata_without_arguments(caplog):
         return "sensitive result"
 
     with caplog.at_level(logging.INFO, logger="tools.retry_executor"):
-        RetryExecutor(sleep=lambda delay: None).execute(tool_call, mock_tool)
+        execute_retry(
+            RetryExecutor(sleep=lambda delay: None), tool_call, mock_tool
+        )
 
     messages = [record.getMessage() for record in caplog.records]
     assert any("tool retry scheduled" in message for message in messages)
@@ -177,7 +190,7 @@ def test_retry_logging_contains_metadata_without_arguments(caplog):
 def test_final_failure_is_logged_after_retries_are_exhausted(caplog):
     with caplog.at_level(logging.INFO, logger="tools.retry_executor"):
         with pytest.raises(TransientToolError):
-            RetryExecutor(sleep=lambda delay: None).execute(
+            execute_retry(RetryExecutor(sleep=lambda delay: None),
                 make_tool_call(),
                 lambda received: (_ for _ in ()).throw(
                     TransientToolError("temporary")

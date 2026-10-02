@@ -8,6 +8,10 @@ class ToolNotFoundError(ToolError):
     pass
 
 
+class ToolNameCollisionError(ToolError):
+    pass
+
+
 class ToolArgumentsError(ToolError):
     pass
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from types import SimpleNamespace
@@ -5,7 +6,7 @@ from types import SimpleNamespace
 import time
 import pytest
 
-from tools.tool_executor import execute_tool
+from tools.tool_executor import execute_tool as async_execute_tool
 from tools import (
     ToolNotFoundError,
     ToolArgumentsError, 
@@ -16,6 +17,10 @@ from tools import (
 
 from tools.tool_registry import TOOL_REGISTRY
 from tools.code_tools_schemas import TOOL_SCHEMA_REGISTRY
+
+
+def execute_tool(tool_call):
+    return asyncio.run(async_execute_tool(tool_call))
 
 
 def test_execute_tool_with_valid_tool_call(tmp_path):

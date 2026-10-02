@@ -17,7 +17,7 @@ from .openai_llm import call_openai_model
 MAX_TOOL_ROUNDS = 20
 
 
-def run_agent(
+async def run_agent(
     history: list[Any],
     context: ExecutionContext,
     permission_policy: PermissionPolicy,
@@ -37,7 +37,7 @@ def run_agent(
 
         for tool_call in tool_calls:
             try:
-                result = execute_tools_via_gateway(
+                result = await execute_tools_via_gateway(
                     tool_call,
                     context,
                     permission_policy,
