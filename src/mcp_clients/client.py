@@ -1,47 +1,36 @@
-import asyncio
-import os
+from typing import Any
 
-from mcp import Client, StdioServerParameters
+from mcp import Client
 
-server = StdioServerParameters(
-    command="uv",
-    args=[
-        "run",
-        "python",
-        "-m",
-        "mcp_servers.code_tools_server",
-    ],
-    env={
-        **os.environ,
-        "PYTHONPATH": "src",
-    },
-)
 
-async def main():
-    async with Client(server) as client:
-        result = await client.list_tools()
+class MCPClient:
+    """Own one MCP connection while leaving transport details to the SDK."""
 
-        # for tool in result.tools:
-        #     print(f"name: {tool.name}")
-        #     print(f"description: {tool.description}")
-        #     print(f"input_schema: {tool.input_schema}")
-        #     print()
+    def __init__(self, server: Any, **client_options: Any) -> None:
+        self._client = Client(server, **client_options)
+        self._connected_client: Client | None = None
 
-        # result =  await client.call_tool(
-        #             "write_file",
-        #             {"path":"./study/test.txt",
-        #              "content":"HELLO"}
-        #         )
-        # result = await client.call_tool(
-        #     "run_command",
-        #         {
-        #         "command": "uv run pytest tests/test_tool_executor.py -q"
-        #         },
-        #     )
+    async def __aenter__(self) -> "MCPClient":
+        self._connected_client = await self._client.__aenter__()
+        return self
 
-        # # print(result.content[0].text)
-        print(result,"\n")
-        print(type(result))
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        try:
+            await self._client.__aexit__(exc_type, exc, traceback)
+        finally:
+            self._connected_client = None
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    def _connection(self) -> Client:
+        if self._connected_client is None:
+            raise RuntimeError("MCP client is not connected")
+        return self._connected_client
+
+    async def list_tools(self, *, cursor: str | None = None):
+        return await self._connection().list_tools(cursor=cursor)
+
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+    ):
+        return await self._connection().call_tool(name, arguments)

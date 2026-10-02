@@ -1,11 +1,15 @@
+import asyncio
 import logging
+import os
 import sys
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 # Keep this file directly runnable from a source checkout.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from code_agent import run_agent
+from code_agent.tool_discovery import discover_mcp_tools
 from approval_config import AUTO_APPROVED_COMMANDS
 from permission_config import TOOL_PERMISSIONS
 from context import ExecutionContext
@@ -15,7 +19,10 @@ from tools import (
     PermissionPolicy,
     ToolError,
     execute_approved_tool_via_gateway,
+    MCP_TOOL_REGISTRY,
 )
+from tools.code_tools_schemas import TOOL_SCHEMAS
+from mcp_clients import MCPClient
 
 DEVELOPER_PROMPT = """You are a coding agent running in the user's terminal.
 You can list files, read files, write files, and run shell commands.
@@ -47,19 +54,21 @@ def prompt_choice(prompt, choices) -> str:
         print(f"Please enter one of: {', '.join(choices)}")
 
 
-def agent_run_orchestration_loop(
+async def agent_run_orchestration_loop(
     messages,
     context,
     permission_policy,
     approval_policy,
+    tool_schemas=TOOL_SCHEMAS,
 ) -> str | None:
     """Orchestrate one agent run across HITL interruptions and resumes."""
     while True:
-        result = run_agent(
+        result = await run_agent(
             messages,
             context,
             permission_policy,
             approval_policy,
+            tool_schemas,
         )
         if not isinstance(result, PendingApproval):
             return result
@@ -79,7 +88,7 @@ def agent_run_orchestration_loop(
         if decision == "approve":
             request.status = ApprovalStatus.APPROVED
             try:
-                output = execute_approved_tool_via_gateway(
+                output = await execute_approved_tool_via_gateway(
                     request,
                     context,
                     permission_policy,
@@ -103,30 +112,48 @@ def agent_run_orchestration_loop(
             return None
 
 
-def main(log_level: int = logging.INFO):
+async def async_main(log_level: int = logging.INFO):
     configure_logging(log_level)
     messages = [{"role": "developer", "content": DEVELOPER_PROMPT}]
     permission_policy = PermissionPolicy(TOOL_PERMISSIONS)
     approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
-    print("Mini agent ready. Type 'exit' or 'quit' to stop.")
+    async with AsyncExitStack() as stack:
+        mcp_clients = []
+        mcp_server_url = os.getenv("MCP_SERVER_URL")
+        if mcp_server_url:
+            mcp_clients.append(
+                await stack.enter_async_context(MCPClient(mcp_server_url))
+            )
 
-    while True:
-        user_input = input("\nYou: ")
-        if user_input.strip().lower() in ("exit", "quit"):
-            break
+        mcp_schemas = await discover_mcp_tools(mcp_clients)
+        tool_schemas = [*TOOL_SCHEMAS, *mcp_schemas]
+        print("Mini agent ready. Type 'exit' or 'quit' to stop.")
 
-        context = ExecutionContext(user_id="local_user")
-        messages.append({"role": "user", "content": user_input})
-        reply = agent_run_orchestration_loop(
-            messages,
-            context,
-            permission_policy,
-            approval_policy,
-        )
-        if reply is None:
-            print("\nAgent run stopped.")
-        else:
-            print(f"\nAgent: {reply}")
+        try:
+            while True:
+                user_input = input("\nYou: ")
+                if user_input.strip().lower() in ("exit", "quit"):
+                    break
+
+                context = ExecutionContext(user_id="local_user")
+                messages.append({"role": "user", "content": user_input})
+                reply = await agent_run_orchestration_loop(
+                    messages,
+                    context,
+                    permission_policy,
+                    approval_policy,
+                    tool_schemas,
+                )
+                if reply is None:
+                    print("\nAgent run stopped.")
+                else:
+                    print(f"\nAgent: {reply}")
+        finally:
+            MCP_TOOL_REGISTRY.clear()
+
+
+def main(log_level: int = logging.INFO):
+    asyncio.run(async_main(log_level))
 
 
 if __name__ == "__main__":

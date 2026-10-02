@@ -1,6 +1,7 @@
+import asyncio
+import inspect
 import logging
-import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .retry_policy import RetryPolicy
@@ -16,18 +17,27 @@ class RetryExecutor:
     def __init__(
         self,
         retry_policy: RetryPolicy | None = None,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._retry_policy = retry_policy or RetryPolicy()
         self._sleep = sleep
 
-    def execute(self, tool_call, execute_tool: Callable[[Any], str]) -> str:
+    async def execute(
+        self,
+        tool_call,
+        execute_tool: Callable[[Any], Awaitable[str]],
+    ) -> str:
         retry_count = 0
 
         while True:
             attempt = retry_count + 1
             try:
-                result = execute_tool(tool_call)
+                operation = execute_tool(tool_call)
+                result = (
+                    await operation
+                    if inspect.isawaitable(operation)
+                    else operation
+                )
             except (ApprovalRequiredError, PermissionDeniedError):
                 # These are Gateway policy/control outcomes, not execution
                 # failures. They must never participate in retry handling.
@@ -65,7 +75,9 @@ class RetryExecutor:
                     error_type,
                     delay,
                 )
-                self._sleep(delay)
+                sleep_result = self._sleep(delay)
+                if inspect.isawaitable(sleep_result):
+                    await sleep_result
                 retry_count += 1
                 logger.info(
                     "tool retry started call_id=%s tool_name=%s "

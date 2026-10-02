@@ -1,3 +1,4 @@
+import asyncio
 import json
 import subprocess
 import sys
@@ -17,6 +18,20 @@ from tools import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def async_gateway_result(result):
+    async def gateway(*args):
+        return result
+
+    return gateway
+
+
+def async_gateway_error(error):
+    async def gateway(*args):
+        raise error
+
+    return gateway
 
 
 def test_main_starts_and_exits_successfully():
@@ -59,7 +74,7 @@ def test_run_agent_executes_tool_and_returns_final_text(monkeypatch):
     monkeypatch.setattr(
         code_agent,
         "execute_tools_via_gateway",
-        lambda tool_call, context, permission_policy, approval_policy: '["a.py"]',
+        async_gateway_result('["a.py"]'),
     )
     history = [{"role": "user", "content": "List files"}]
     context = ExecutionContext(user_id="test_user")
@@ -67,12 +82,12 @@ def test_run_agent_executes_tool_and_returns_final_text(monkeypatch):
     approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
 
     assert (
-        code_agent.run_agent(
+        asyncio.run(code_agent.run_agent(
             history,
             context,
             permission_policy,
             approval_policy,
-        )
+        ))
         == "Done"
     )
     assert history[-1] == {
@@ -111,9 +126,7 @@ def test_run_agent_returns_permission_denial_to_model(monkeypatch):
     monkeypatch.setattr(
         code_agent,
         "execute_tools_via_gateway",
-        lambda tool_call, context, permission_policy, approval_policy: (
-            (_ for _ in ()).throw(PermissionDeniedError("not allowed"))
-        ),
+        async_gateway_error(PermissionDeniedError("not allowed")),
     )
     history = [{"role": "user", "content": "Write a file"}]
     context = ExecutionContext(user_id="test_user")
@@ -121,12 +134,12 @@ def test_run_agent_returns_permission_denial_to_model(monkeypatch):
     approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
 
     assert (
-        code_agent.run_agent(
+        asyncio.run(code_agent.run_agent(
             history,
             context,
             permission_policy,
             approval_policy,
-        )
+        ))
         == "Permission denied"
     )
     assert history[-1] == {
@@ -154,21 +167,19 @@ def test_run_agent_returns_pending_approval_without_resuming(monkeypatch):
     monkeypatch.setattr(
         code_agent,
         "execute_tools_via_gateway",
-        lambda tool_call, context, permission_policy, approval_policy: (
-            (_ for _ in ()).throw(ApprovalRequiredError("approval required"))
-        ),
+        async_gateway_error(ApprovalRequiredError("approval required")),
     )
     history = [{"role": "user", "content": "Remove a file"}]
     context = ExecutionContext(user_id="test_user")
     permission_policy = PermissionPolicy({"test_user": {"run_command"}})
     approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
 
-    result = code_agent.run_agent(
+    result = asyncio.run(code_agent.run_agent(
         history,
         context,
         permission_policy,
         approval_policy,
-    )
+    ))
 
     assert isinstance(result, PendingApproval)
     assert result.approval_request.tool_call is tool_call

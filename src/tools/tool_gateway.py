@@ -25,7 +25,7 @@ def _log_execution(tool_call, context: ExecutionContext, result: str) -> None:
     )
 
 
-def execute_tools_via_gateway(
+async def execute_tools_via_gateway(
     tool_call,
     context: ExecutionContext,
     permission_policy: PermissionPolicy,
@@ -47,7 +47,7 @@ def execute_tools_via_gateway(
         )
 
     try:
-        result = retry_executor.execute(tool_call, execute_tool)
+        result = await retry_executor.execute(tool_call, execute_tool)
     except ToolError:
         _log_execution(tool_call, context, "failed")
         raise
@@ -56,7 +56,7 @@ def execute_tools_via_gateway(
     return result
 
 
-def execute_approved_tool_via_gateway(
+async def execute_approved_tool_via_gateway(
     approval_request: ApprovalRequest,
     context: ExecutionContext,
     permission_policy: PermissionPolicy,
@@ -75,7 +75,7 @@ def execute_approved_tool_via_gateway(
         )
 
     try:
-        result = retry_executor.execute(tool_call, execute_tool)
+        result = await retry_executor.execute(tool_call, execute_tool)
     except ToolError:
         _log_execution(tool_call, context, "failed")
         raise

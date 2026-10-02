@@ -5,6 +5,7 @@ from jsonschema import validate, ValidationError
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from .tool_registry import TOOL_REGISTRY
+from .mcp_tool_registry import MCP_TOOL_REGISTRY
 from .code_tools_schemas import TOOL_SCHEMA_REGISTRY
 from .tool_errors import (
     ToolArgumentsError,
@@ -57,8 +58,9 @@ def normalize_result(result):
 
 
 
-def validate_tool_arguments(tool_name: str, arguments: dict):
-    schema = TOOL_SCHEMA_REGISTRY[tool_name]["parameters"]
+def validate_tool_arguments(tool_name: str, arguments: dict, schema=None):
+    if schema is None:
+        schema = TOOL_SCHEMA_REGISTRY[tool_name]["parameters"]
 
     try:
         validate(
@@ -73,7 +75,33 @@ def validate_tool_arguments(tool_name: str, arguments: dict):
 
 
 
-def execute_tool(tool_call):
+def normalize_mcp_result(result):
+    content = getattr(result, "content", [])
+    if getattr(result, "is_error", False):
+        detail = "\n".join(
+            item.text for item in content if getattr(item, "type", None) == "text"
+        ) or "MCP tool returned an error"
+        raise ToolExecutionError(detail)
+
+    structured_content = getattr(result, "structured_content", None)
+    if structured_content is not None:
+        return normalize_result(structured_content)
+
+    values = []
+    for item in content:
+        if getattr(item, "type", None) == "text":
+            values.append(item.text)
+        elif hasattr(item, "model_dump"):
+            values.append(item.model_dump(by_alias=True, exclude_none=True))
+        else:
+            values.append(item)
+
+    if len(values) == 1:
+        return normalize_result(values[0])
+    return normalize_result(values)
+
+
+async def execute_tool(tool_call):
     try:
         try:
             args = json.loads(tool_call.arguments)
@@ -83,24 +111,35 @@ def execute_tool(tool_call):
                 f"Invalid arguments for tool '{tool_call.name}': {e}"
             ) from e
 
-        try:
-            tool_func = TOOL_REGISTRY[tool_call.name]
-        except KeyError as e:
+        tool_func = TOOL_REGISTRY.get(tool_call.name)
+        mcp_client = MCP_TOOL_REGISTRY.get_client(tool_call.name)
+        mcp_definition = MCP_TOOL_REGISTRY.get_definition(tool_call.name)
+        if tool_func is None and mcp_client is None:
             raise ToolNotFoundError(
                 f"Tool not found: {tool_call.name}"
-            ) from e
+            )
 
         validate_tool_arguments(
             tool_call.name,
             args,
+            (
+                None
+                if tool_func is not None
+                else mcp_definition.input_schema
+            ),
         )
 
         try:
-            result = execute_tool_with_timeout(
-                tool_func,
-                args,
-                timeout=TOOL_TIMEOUT
-            )
+            if tool_func is not None:
+                result = execute_tool_with_timeout(
+                    tool_func,
+                    args,
+                    timeout=TOOL_TIMEOUT
+                )
+                return normalize_result(result)
+
+            result = await mcp_client.call_tool(tool_call.name, args)
+            return normalize_mcp_result(result)
 
         except TimeoutError as e:
             raise ToolTimeoutError(
@@ -117,8 +156,6 @@ def execute_tool(tool_call):
             raise ToolExecutionError(
                 f"Error occurred while executing tool '{tool_call.name}': {e}"
             ) from e
-
-        return normalize_result(result)
 
     except ToolError as error:
         logger.error(
