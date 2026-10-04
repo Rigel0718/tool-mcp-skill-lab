@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pytest
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import main
 from hitl import ApprovalRequest, ApprovalStatus, PendingApproval
-from tools import ApprovalPolicy, PermissionPolicy
+from tools import ApprovalPolicy, PermissionPolicy, MCP_TOOL_REGISTRY
 from context import ExecutionContext
 
 
@@ -45,6 +46,34 @@ def test_configure_logging_uses_info_and_expected_format(monkeypatch):
         "level": logging.INFO,
         "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
     }
+
+
+def test_mcp_connection_configuration_is_separate_from_tool_discovery(monkeypatch):
+    monkeypatch.setenv("CODE_MCP_ENABLED", "1")
+    monkeypatch.setenv("MCP_SERVER_URL", "http://postgres.example/mcp")
+
+    configs = main.configured_mcp_servers()
+
+    assert [(item.name, item.namespace, item.required) for item in configs] == [
+        ("code-tools", "code", True),
+        ("postgres", "postgres", False),
+    ]
+    assert all(not hasattr(item, "tools") for item in configs)
+
+
+def test_main_cleans_registry_when_startup_fails(monkeypatch):
+    from mcp.types import Tool
+
+    async def fail_startup(configs, stack):
+        MCP_TOOL_REGISTRY.register_discovered_tools(
+            object(), [Tool(name="search", inputSchema={"type": "object"})], "partial"
+        )
+        raise ConnectionError("required startup failed")
+
+    monkeypatch.setattr(main, "connect_mcp_servers", fail_startup)
+    with pytest.raises(ConnectionError, match="required startup failed"):
+        asyncio.run(main.async_main())
+    assert MCP_TOOL_REGISTRY.get("partial_search") is None
 
 
 def test_execution_context_generates_distinct_run_ids():

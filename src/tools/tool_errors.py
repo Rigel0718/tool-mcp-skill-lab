@@ -24,6 +24,14 @@ class TransientToolError(ToolExecutionError):
     """A tool failure that is explicitly safe to consider for retry."""
 
 
+class MCPCommunicationError(TransientToolError):
+    """A transient failure while communicating with an MCP server."""
+
+
+class MCPToolExecutionError(ToolExecutionError):
+    """An MCP tool returned a protocol-level execution failure."""
+
+
 class ToolTimeoutError(ToolError):
     pass
 
