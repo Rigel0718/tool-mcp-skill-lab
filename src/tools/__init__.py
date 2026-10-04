@@ -5,6 +5,8 @@ from .tool_errors import (
     ToolArgumentsError,
     ToolError,
     ToolExecutionError,
+    MCPCommunicationError,
+    MCPToolExecutionError,
     ToolNotFoundError,
     ToolNameCollisionError,
     ToolTimeoutError,
@@ -18,7 +20,11 @@ from .approval_policy import ApprovalPolicy
 from .permission_policy import PermissionPolicy
 from .retry_executor import RetryExecutor
 from .retry_policy import RetryPolicy
-from .mcp_tool_registry import MCP_TOOL_REGISTRY, MCPToolRegistry
+from .mcp_tool_registry import (
+    MCP_TOOL_REGISTRY,
+    MCPToolRegistration,
+    MCPToolRegistry,
+)
 
 
 __all__ = [
@@ -32,6 +38,8 @@ __all__ = [
     "ToolArgumentsError",
     "ToolError",
     "ToolExecutionError",
+    "MCPCommunicationError",
+    "MCPToolExecutionError",
     "ToolNotFoundError",
     "ToolNameCollisionError",
     "ToolTimeoutError",
@@ -39,5 +47,6 @@ __all__ = [
     "RetryExecutor",
     "RetryPolicy",
     "MCP_TOOL_REGISTRY",
+    "MCPToolRegistration",
     "MCPToolRegistry",
 ]

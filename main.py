@@ -9,7 +9,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from code_agent import run_agent
-from code_agent.tool_discovery import discover_mcp_tools
 from approval_config import AUTO_APPROVED_COMMANDS
 from permission_config import TOOL_PERMISSIONS
 from context import ExecutionContext
@@ -22,7 +21,7 @@ from tools import (
     MCP_TOOL_REGISTRY,
 )
 from tools.code_tools_schemas import TOOL_SCHEMAS
-from mcp_clients import MCPClient
+from mcp_clients import MCPServerConfig, connect_mcp_servers
 
 DEVELOPER_PROMPT = """You are a coding agent running in the user's terminal.
 You can list files, read files, write files, and run shell commands.
@@ -52,6 +51,30 @@ def prompt_choice(prompt, choices) -> str:
         if choice in choices:
             return choice
         print(f"Please enter one of: {', '.join(choices)}")
+
+
+def configured_mcp_servers() -> list[MCPServerConfig]:
+    """Build application dependencies separately from discovered capabilities."""
+    servers = []
+    if os.getenv("CODE_MCP_ENABLED") == "1":
+        from mcp_servers.code_tools_server import mcp as code_mcp_server
+
+        servers.append(MCPServerConfig(
+            name="code-tools",
+            namespace="code",
+            server=code_mcp_server,
+            required=True,
+        ))
+
+    mcp_server_url = os.getenv("MCP_SERVER_URL")
+    if mcp_server_url:
+        servers.append(MCPServerConfig(
+            name="postgres",
+            namespace="postgres",
+            server=mcp_server_url,
+            required=False,
+        ))
+    return servers
 
 
 async def agent_run_orchestration_loop(
@@ -118,38 +141,31 @@ async def async_main(log_level: int = logging.INFO):
     permission_policy = PermissionPolicy(TOOL_PERMISSIONS)
     approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
     async with AsyncExitStack() as stack:
-        mcp_clients = []
-        mcp_server_url = os.getenv("MCP_SERVER_URL")
-        if mcp_server_url:
-            mcp_clients.append(
-                await stack.enter_async_context(MCPClient(mcp_server_url))
-            )
-
-        mcp_schemas = await discover_mcp_tools(mcp_clients)
+        stack.callback(MCP_TOOL_REGISTRY.clear)
+        mcp_schemas = await connect_mcp_servers(
+            configured_mcp_servers(), stack
+        )
         tool_schemas = [*TOOL_SCHEMAS, *mcp_schemas]
         print("Mini agent ready. Type 'exit' or 'quit' to stop.")
 
-        try:
-            while True:
-                user_input = input("\nYou: ")
-                if user_input.strip().lower() in ("exit", "quit"):
-                    break
+        while True:
+            user_input = input("\nYou: ")
+            if user_input.strip().lower() in ("exit", "quit"):
+                break
 
-                context = ExecutionContext(user_id="local_user")
-                messages.append({"role": "user", "content": user_input})
-                reply = await agent_run_orchestration_loop(
-                    messages,
-                    context,
-                    permission_policy,
-                    approval_policy,
-                    tool_schemas,
-                )
-                if reply is None:
-                    print("\nAgent run stopped.")
-                else:
-                    print(f"\nAgent: {reply}")
-        finally:
-            MCP_TOOL_REGISTRY.clear()
+            context = ExecutionContext(user_id="local_user")
+            messages.append({"role": "user", "content": user_input})
+            reply = await agent_run_orchestration_loop(
+                messages,
+                context,
+                permission_policy,
+                approval_policy,
+                tool_schemas,
+            )
+            if reply is None:
+                print("\nAgent run stopped.")
+            else:
+                print(f"\nAgent: {reply}")
 
 
 def main(log_level: int = logging.INFO):

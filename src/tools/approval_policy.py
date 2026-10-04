@@ -6,16 +6,20 @@ from typing import Any
 
 from context import ExecutionContext
 
+from .mcp_tool_registry import MCP_TOOL_REGISTRY, MCPToolRegistry
+
 
 class ApprovalPolicy:
     def __init__(
         self,
         auto_approved_commands: Mapping[str, Collection[str] | None],
+        mcp_registry: MCPToolRegistry = MCP_TOOL_REGISTRY,
     ) -> None:
         self._auto_approved_commands = {
             command: None if subcommands is None else frozenset(subcommands)
             for command, subcommands in auto_approved_commands.items()
         }
+        self._mcp_registry = mcp_registry
 
     def requires_approval(
         self,
@@ -25,6 +29,15 @@ class ApprovalPolicy:
         # Context is part of the policy boundary even though the initial policy
         # does not yet vary by user or execution environment.
         del context
+
+        registration = self._mcp_registry.get(tool_call.name)
+        if registration is not None:
+            annotations = registration.annotations
+            return not (
+                annotations is not None
+                and annotations.read_only_hint is True
+                and annotations.destructive_hint is not True
+            )
 
         if tool_call.name in {"list_files", "read_file"}:
             return False

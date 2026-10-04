@@ -8,6 +8,7 @@ from .tool_registry import TOOL_REGISTRY
 from .mcp_tool_registry import MCP_TOOL_REGISTRY
 from .code_tools_schemas import TOOL_SCHEMA_REGISTRY
 from .tool_errors import (
+    MCPToolExecutionError,
     ToolArgumentsError,
     ToolError,
     ToolExecutionError,
@@ -81,7 +82,7 @@ def normalize_mcp_result(result):
         detail = "\n".join(
             item.text for item in content if getattr(item, "type", None) == "text"
         ) or "MCP tool returned an error"
-        raise ToolExecutionError(detail)
+        raise MCPToolExecutionError(detail)
 
     structured_content = getattr(result, "structured_content", None)
     if structured_content is not None:
@@ -112,9 +113,8 @@ async def execute_tool(tool_call):
             ) from e
 
         tool_func = TOOL_REGISTRY.get(tool_call.name)
-        mcp_client = MCP_TOOL_REGISTRY.get_client(tool_call.name)
-        mcp_definition = MCP_TOOL_REGISTRY.get_definition(tool_call.name)
-        if tool_func is None and mcp_client is None:
+        mcp_registration = MCP_TOOL_REGISTRY.get(tool_call.name)
+        if tool_func is None and mcp_registration is None:
             raise ToolNotFoundError(
                 f"Tool not found: {tool_call.name}"
             )
@@ -125,7 +125,7 @@ async def execute_tool(tool_call):
             (
                 None
                 if tool_func is not None
-                else mcp_definition.input_schema
+                else mcp_registration.definition.input_schema
             ),
         )
 
@@ -138,7 +138,10 @@ async def execute_tool(tool_call):
                 )
                 return normalize_result(result)
 
-            result = await mcp_client.call_tool(tool_call.name, args)
+            result = await mcp_registration.client.call_tool(
+                mcp_registration.remote_name,
+                args,
+            )
             return normalize_mcp_result(result)
 
         except TimeoutError as e:
