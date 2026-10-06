@@ -23,10 +23,17 @@ async def run_agent(
     permission_policy: PermissionPolicy,
     approval_policy: ApprovalPolicy,
     tool_schemas: list[dict[str, Any]] = TOOL_SCHEMAS,
+    skill_instructions: str | None = None,
 ) -> str | PendingApproval:
     """Run the model/tool loop and append all new items to ``history``."""
     for _ in range(MAX_TOOL_ROUNDS):
-        response = call_openai_model(history, tool_schemas, raw_response=True)
+        model_history = history
+        if skill_instructions is not None:
+            model_history = [
+                *history,
+                {"role": "developer", "content": skill_instructions},
+            ]
+        response = call_openai_model(model_history, tool_schemas, raw_response=True)
         history.extend(response.output)
 
         tool_calls = [

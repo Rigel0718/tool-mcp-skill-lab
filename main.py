@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from code_agent import run_agent
+from code_agent.skills import discover_skills, select_skill, load_skill
 from approval_config import AUTO_APPROVED_COMMANDS
 from permission_config import TOOL_PERMISSIONS
 from context import ExecutionContext
@@ -83,8 +84,15 @@ async def agent_run_orchestration_loop(
     permission_policy,
     approval_policy,
     tool_schemas=TOOL_SCHEMAS,
+    candidate_skills=None,
 ) -> str | None:
     """Orchestrate one agent run across HITL interruptions and resumes."""
+    selected = select_skill(messages, candidate_skills or [])
+    skill_instructions = load_skill(selected) if selected is not None else None
+    skill_kwargs = (
+        {"skill_instructions": skill_instructions}
+        if skill_instructions is not None else {}
+    )
     while True:
         result = await run_agent(
             messages,
@@ -92,6 +100,7 @@ async def agent_run_orchestration_loop(
             permission_policy,
             approval_policy,
             tool_schemas,
+            **skill_kwargs,
         )
         if not isinstance(result, PendingApproval):
             return result
@@ -140,6 +149,7 @@ async def async_main(log_level: int = logging.INFO):
     messages = [{"role": "developer", "content": DEVELOPER_PROMPT}]
     permission_policy = PermissionPolicy(TOOL_PERMISSIONS)
     approval_policy = ApprovalPolicy(AUTO_APPROVED_COMMANDS)
+    candidate_skills = discover_skills(Path.cwd() / ".agents" / "skills")
     async with AsyncExitStack() as stack:
         stack.callback(MCP_TOOL_REGISTRY.clear)
         mcp_schemas = await connect_mcp_servers(
@@ -161,6 +171,7 @@ async def async_main(log_level: int = logging.INFO):
                 permission_policy,
                 approval_policy,
                 tool_schemas,
+                candidate_skills,
             )
             if reply is None:
                 print("\nAgent run stopped.")

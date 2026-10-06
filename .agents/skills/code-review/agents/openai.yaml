@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Review code for correctness, reliability, and test coverage"
+  default_prompt: "Use $code-review to review the current code or code changes and report verified findings by severity."
